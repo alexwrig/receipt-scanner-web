@@ -11,23 +11,17 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // SendGrid sends multipart/form-data
-  let formData;
+  let body;
   try {
-    formData = await request.formData();
+    body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  // Attachments arrive as attachment1, attachment2, ...
-  const attachments = [];
-  let i = 1;
-  while (formData.has(`attachment${i}`)) {
-    attachments.push(formData.get(`attachment${i}`));
-    i++;
-  }
-
-  const valid = attachments.filter(a => RECEIPT_TYPES.includes(a.type));
+  // Cloudmailin: { attachments: [{ file_name, content_type, content (base64), size }] }
+  const valid = (body.attachments || []).filter(a =>
+    RECEIPT_TYPES.includes(a.content_type)
+  );
 
   if (valid.length === 0) {
     return NextResponse.json({ processed: 0, message: 'No receipt attachments found' });
@@ -38,15 +32,13 @@ export async function POST(request) {
 
   for (const attachment of valid) {
     try {
-      const buffer = Buffer.from(await attachment.arrayBuffer());
-      const base64 = buffer.toString('base64');
-      const data = await extractReceiptData(base64, attachment.type);
+      const data = await extractReceiptData(attachment.content, attachment.content_type);
       data.receipt_source = 'Email';
       await appendReceipt(data);
       processed++;
     } catch (err) {
-      console.error('Failed to process attachment:', attachment.name, err.message);
-      errors.push({ file: attachment.name, error: err.message });
+      console.error('Failed to process attachment:', attachment.file_name, err.message);
+      errors.push({ file: attachment.file_name, error: err.message });
     }
   }
 

@@ -11,33 +11,42 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body;
+  // SendGrid sends multipart/form-data
+  let formData;
   try {
-    body = await request.json();
+    formData = await request.formData();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid form data' }, { status: 400 });
   }
 
-  const attachments = (body.attachments || []).filter(a =>
-    RECEIPT_TYPES.includes(a.mimeType)
-  );
+  // Attachments arrive as attachment1, attachment2, ...
+  const attachments = [];
+  let i = 1;
+  while (formData.has(`attachment${i}`)) {
+    attachments.push(formData.get(`attachment${i}`));
+    i++;
+  }
 
-  if (attachments.length === 0) {
+  const valid = attachments.filter(a => RECEIPT_TYPES.includes(a.type));
+
+  if (valid.length === 0) {
     return NextResponse.json({ processed: 0, message: 'No receipt attachments found' });
   }
 
   let processed = 0;
   const errors = [];
 
-  for (const attachment of attachments) {
+  for (const attachment of valid) {
     try {
-      const data = await extractReceiptData(attachment.content, attachment.mimeType);
+      const buffer = Buffer.from(await attachment.arrayBuffer());
+      const base64 = buffer.toString('base64');
+      const data = await extractReceiptData(base64, attachment.type);
       data.receipt_source = 'Email';
       await appendReceipt(data);
       processed++;
     } catch (err) {
-      console.error('Failed to process attachment:', attachment.filename, err.message);
-      errors.push({ file: attachment.filename, error: err.message });
+      console.error('Failed to process attachment:', attachment.name, err.message);
+      errors.push({ file: attachment.name, error: err.message });
     }
   }
 

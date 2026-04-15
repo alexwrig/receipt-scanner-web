@@ -18,8 +18,8 @@ export async function POST(request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const attachments = (body.Attachments || []).filter(a =>
-    RECEIPT_TYPES.includes(a.ContentType)
+  const attachments = (body.attachments || []).filter(a =>
+    RECEIPT_TYPES.includes(a.mimeType)
   );
 
   if (attachments.length === 0) {
@@ -31,13 +31,13 @@ export async function POST(request) {
 
   for (const attachment of attachments) {
     try {
-      const data = await extractReceiptData(attachment.Content, attachment.ContentType);
+      const data = await extractReceiptData(attachment.content, attachment.mimeType);
       data.receipt_source = 'Email';
       await appendReceipt(data);
       processed++;
     } catch (err) {
-      console.error('Failed to process attachment:', attachment.Name, err.message);
-      errors.push({ file: attachment.Name, error: err.message });
+      console.error('Failed to process attachment:', attachment.filename, err.message);
+      errors.push({ file: attachment.filename, error: err.message });
     }
   }
 
